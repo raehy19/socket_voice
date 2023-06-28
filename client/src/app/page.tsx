@@ -1,95 +1,132 @@
-import Image from 'next/image'
+import React, { useEffect, useRef, useState } from "react";
+import Peer from "simple-peer";
+import io from "socket.io-client";
 import styles from './page.module.css'
 
 export default function Home() {
+    const [stream, setStream] = useState();
+    const [oppoID, setOppoID] = useState("");
+    const [myID, setMyID] = useState("");
+    const [caller, setCaller] = useState("");
+    const [receivingCall, setReceivingCall] = useState(false);
+    const [callAccepted, setCallAccepted] = useState(false);
+    const [callerSignal, setCallerSignal] = useState();
+    const myVideo = useRef();
+    const userVideo = useRef();
+    const connection = useRef();
+    useEffect(() => {
+        navigator.mediaDevices
+            .getUserMedia({ video: true, audio: true })
+            .then((stream) => {
+                setStream(stream);
+                myVideo.current.srcObject = stream;
+            });
+
+        socket.on("getid", (id) => {
+            setMyID(id);
+        });
+
+        socket.on("caller", (data) => {
+            setReceivingCall(true);
+            setCaller(data.from);
+            setCallerSignal(data.signal);
+        });
+    }, []);
+
+    const calling = () => {
+        const peer = new Peer({
+            initiator: true,
+            trickle: false,
+            stream: stream,
+        });
+        peer.on("signal", (data) => {
+            socket.emit("caller", {
+                ToCall: oppoID,
+                signalData: data,
+                from: myID,
+            });
+        });
+        peer.on("stream", (stream) => {
+            userVideo.current.srcObject = stream;
+        });
+        socket.on("acceptcall", (signal) => {
+            setCallAccepted(true);
+            peer.signal(signal);
+        });
+        connection.current = peer;
+    };
+
+    const answerCall = () => {
+        setCallAccepted(true);
+        const peer = new Peer({
+            initiator: false,
+            trickle: false,
+            stream: stream,
+        });
+        peer.on("signal", (data) => {
+            socket.emit("answerCall", { signal: data, to: caller });
+        });
+        peer.on("stream", (stream) => {
+            userVideo.current.srcObject = stream;
+        });
+        peer.signal(callerSignal);
+        connection.current = peer;
+    };
+
+
+
   return (
     <main className={styles.main}>
-      <div className={styles.description}>
-        <p>
-          Get started by editing&nbsp;
-          <code className={styles.code}>src/app/page.tsx</code>
-        </p>
-        <div>
-          <a
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className={styles.vercelLogo}
-              width={100}
-              height={24}
-              priority
+        <div className="App">
+            <p>Your ID : {myID}</p>
+            <p>write id you want to connected</p>
+            <input
+                type="text"
+                value={oppoID}
+                onChange={(e) => setOppoID(e.target.value)}
             />
-          </a>
+            <button onClick={calling}>voice call</button>
+            <br />
+            {receivingCall && !callAccepted ? (
+                <div>
+                    <p>who want to talk with you</p>
+                    <button onClick={answerCall}>answer call</button>
+                </div>
+            ) : null}
+            <hr />
+            <p>=== connected status ===</p>
+            {(function () {
+                if (receivingCall) {
+                    return <p>connected</p>;
+                } else {
+                    return <p>not connected</p>;
+                }
+            })()}
         </div>
-      </div>
-
-      <div className={styles.center}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
-
-      <div className={styles.grid}>
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Docs <span>-&gt;</span>
-          </h2>
-          <p>Find in-depth information about Next.js features and API.</p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Learn <span>-&gt;</span>
-          </h2>
-          <p>Learn about Next.js in an interactive course with&nbsp;quizzes!</p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Templates <span>-&gt;</span>
-          </h2>
-          <p>Explore the Next.js 13 playground.</p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Deploy <span>-&gt;</span>
-          </h2>
-          <p>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
+        {/**if you want to screen chat display delete */}
+        <div style={{ display: "none" }}>
+            <div className="video">
+                {stream && (
+                    <video
+                        playsInline
+                        muted
+                        ref={myVideo}
+                        autoPlay
+                        style={{ width: "300px" }}
+                    />
+                )}
+            </div>
+            <div className="video">
+                {callAccepted ? (
+                    <video
+                        playsInline
+                        ref={userVideo}
+                        autoPlay
+                        style={{ width: "300px" }}
+                    />
+                ) : null}
+            </div>
+        </div>
     </main>
   )
 }

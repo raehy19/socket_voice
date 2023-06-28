@@ -1,11 +1,33 @@
-const express = require('express')
-const app = express()
-const port = 3000
+const express = require("express");
+const app = express();
 
-app.get('/', (req:any, res:any) => {
-    res.send('Hello World!')
-})
+const cors = require("cors");
+const compression = require("compression");
 
-app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-})
+app.use(cors());
+app.use(compression());
+
+const socket_cors = {
+  cors: {
+    origin: "http://localhost:3000",
+    methods: ["GET", "POST"],
+  },
+};
+
+const http_server = require("http").createServer(app).listen(8081);
+const io = require("socket.io")(http_server, socket_cors);
+
+io.on("connection", (socket:any) => {
+  socket.emit("getid", socket.id);
+
+  socket.on("caller", (data:any) => {
+    io.to(data.ToCall).emit("caller", {
+      signal: data.signalData,
+      from: data.from,
+    });
+  });
+
+  socket.on("answerCall", (data:any) => {
+    io.to(data.to).emit("acceptcall", data.signal);
+  });
+});
